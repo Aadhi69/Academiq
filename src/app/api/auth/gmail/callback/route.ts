@@ -94,8 +94,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Verify authorized user email identity
-    const profile = await verifyGmailProfile(tokenData.access_token);
+    // Verify authorized user email identity using userinfo / id_token
+    const profile = await verifyGmailProfile(tokenData.access_token, tokenData.id_token);
     const authorizedEmail = profile.emailAddress.toLowerCase();
 
     if (authorizedEmail !== EXPECTED_HOD_EMAIL.toLowerCase()) {
