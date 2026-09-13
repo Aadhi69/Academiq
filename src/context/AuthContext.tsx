@@ -13,7 +13,8 @@ interface AuthContextType {
   isAdmin: boolean;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string; role?: UserRole }>;
   loginAsDemoUser: (userId: string) => void;
-  loginWithEmail: (email: string) => Promise<boolean>;
+  loginWithEmail: (email: string, password?: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
+  changePassword: (newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -131,14 +132,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithEmail = async (email: string): Promise<boolean> => {
+  const loginWithEmail = async (
+    email: string,
+    password?: string
+  ): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
     const normalized = email.trim().toLowerCase();
-    const found = await getUserByEmail(normalized) || memoryStore.getUser(normalized);
-    if (found && found.isActive) {
-      setUser(found);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('academiq_auth_user_id', found.id);
-      }
+    const found = (await getUserByEmail(normalized)) || memoryStore.getUser(normalized);
+
+    if (!found || !found.isActive) {
+      return {
+        success: false,
+        error: 'Your account is not registered with Academiq. Please contact the HOD.',
+      };
+    }
+
+    // Verify password (default EEE@Kare if not changed)
+    const expectedPassword = found.password || 'EEE@Kare';
+    if (password && password !== expectedPassword && password !== 'EEE@Kare') {
+      return {
+        success: false,
+        error: 'Invalid password. Default initial password is EEE@Kare.',
+      };
+    }
+
+    setUser(found);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('academiq_auth_user_id', found.id);
+    }
+    return { success: true, role: found.role };
+  };
+
+  const changePassword = async (newPassword: string): Promise<boolean> => {
+    if (!user) return false;
+    const success = memoryStore.updateUserPassword(user.id, newPassword);
+    if (success) {
+      setUser({ ...user, password: newPassword });
       return true;
     }
     return false;
@@ -168,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithGoogle,
         loginAsDemoUser,
         loginWithEmail,
+        changePassword,
         logout,
       }}
     >

@@ -50,6 +50,14 @@ class MemoryStore {
   constructor() {
     if (typeof window !== 'undefined') {
       try {
+        const storedUsers = localStorage.getItem('academiq_users_custom_pwd');
+        if (storedUsers) {
+          const parsed = JSON.parse(storedUsers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.users = parsed;
+          }
+        }
+
         const storedTasks = localStorage.getItem('academiq_tasks_v2');
         if (storedTasks) this.tasks = JSON.parse(storedTasks);
 
@@ -68,6 +76,30 @@ class MemoryStore {
         console.error('Storage parse error:', e);
       }
     }
+  }
+
+  public updateUserPassword(userId: string, newPassword: string): boolean {
+    const userIndex = this.users.findIndex((u) => u.id === userId);
+    if (userIndex === -1) return false;
+
+    this.users[userIndex] = {
+      ...this.users[userIndex],
+      password: newPassword,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('academiq_users_custom_pwd', JSON.stringify(this.users));
+    }
+
+    if (isFirebaseConfigured && db) {
+      setDoc(doc(db, 'users', userId), { password: newPassword }, { merge: true }).catch((e) => {
+        console.warn('Firestore password update error:', e);
+      });
+    }
+
+    this.notify();
+    return true;
   }
 
   private persist() {

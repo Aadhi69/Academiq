@@ -13,12 +13,17 @@ import {
   CheckSquare, 
   Award,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 
 export default function FacultyProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, changePassword } = useAuth();
   const [tasks, setTasks] = useState(memoryStore.getTasks());
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     const unsub = memoryStore.subscribe(() => {
@@ -26,6 +31,30 @@ export default function FacultyProfilePage() {
     });
     return () => unsub();
   }, []);
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMsg(null);
+
+    if (newPassword.length < 6) {
+      setPasswordMsg({ type: 'error', text: 'Password must be at least 6 characters long.' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg({ type: 'error', text: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    const success = await changePassword(newPassword);
+    if (success) {
+      setPasswordMsg({ type: 'success', text: 'Password updated successfully! Use your new password on next login.' });
+      setNewPassword('');
+      setConfirmPassword('');
+    } else {
+      setPasswordMsg({ type: 'error', text: 'Failed to update password. Please try again.' });
+    }
+  };
 
   if (!user) return null;
 
@@ -140,6 +169,68 @@ export default function FacultyProfilePage() {
             <span>Sign Out from Academiq</span>
           </button>
         </div>
+      </div>
+
+      {/* Change Password Card */}
+      <div className="p-6 sm:p-8 rounded-2xl border border-slate-200 bg-white shadow-2xs space-y-5">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
+          <Lock className="w-4 h-4 text-blue-600" />
+          <span>Security & Password Management</span>
+        </div>
+
+        <p className="text-xs text-slate-500">
+          Update your institutional account password for email logins. Your initial password was set to <strong className="font-mono text-slate-800">EEE@Kare</strong>.
+        </p>
+
+        <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+          {passwordMsg && (
+            <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+              passwordMsg.type === 'success' 
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}>
+              {passwordMsg.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              )}
+              <span>{passwordMsg.text}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">New Password</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password (min. 6 characters)"
+              className="w-full px-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              className="w-full px-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors"
+          >
+            Update Password
+          </button>
+        </form>
       </div>
     </div>
   );

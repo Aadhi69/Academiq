@@ -51,20 +51,17 @@ export default function LoginPage() {
     setIsLoading(true);
     setErrorMsg('');
 
-    const success = await loginWithEmail(emailInput);
+    const res = await loginWithEmail(emailInput, passwordInput);
     setIsLoading(false);
 
-    if (success) {
-      const user = memoryStore.getUsers().find(
-        (u) => u.email.toLowerCase() === emailInput.toLowerCase() || u.kluid.toLowerCase() === emailInput.toLowerCase()
-      );
-      if (user?.role === 'ADMIN') {
+    if (res.success) {
+      if (res.role === 'ADMIN') {
         router.push('/admin/dashboard');
       } else {
         router.push('/faculty/dashboard');
       }
     } else {
-      setErrorMsg('No user record found matching this institutional email or KLU ID.');
+      setErrorMsg(res.error || 'No user record found matching this institutional email or KLU ID.');
     }
   };
 
@@ -250,7 +247,7 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold text-slate-700">
                   Password
                 </label>
-                <span className="text-[10px] text-slate-400">Institutional SSO</span>
+                <span className="text-[10px] text-blue-600 font-medium">Initial: EEE@Kare</span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -258,7 +255,7 @@ export default function LoginPage() {
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Enter your password (e.g. EEE@Kare)"
                   className="w-full pl-9 pr-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200/80 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
