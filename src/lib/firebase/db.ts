@@ -36,6 +36,49 @@ import {
 } from 'firebase/firestore';
 
 
+/**
+ * Recursively sanitizes objects for Firestore by omitting `undefined` properties
+ * while safely preserving Date, Timestamp, DocumentReference, FieldValue, and primitives.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  // Preserve Date instances
+  if (data instanceof Date) {
+    return data;
+  }
+
+  // Preserve Firestore Timestamp, FieldValue, DocumentReference, GeoPoint
+  if (
+    typeof data === 'object' &&
+    ('toMillis' in data || 'toDate' in data || '_methodName' in data || 'isEqual' in data || 'latitude' in data)
+  ) {
+    return data;
+  }
+
+  // Handle Arrays recursively
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+
+  // Handle plain objects recursively
+  if (typeof data === 'object' && data.constructor && data.constructor.name === 'Object') {
+    const cleanObj: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleanObj[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleanObj as T;
+  }
+
+  return data;
+}
+
 // In-Memory/Storage Cache for reactive state
 class MemoryStore {
   private users: User[] = [...SEED_USERS];
@@ -72,6 +115,9 @@ class MemoryStore {
 
         const storedAudit = localStorage.getItem('academiq_audit_v2');
         if (storedAudit) this.auditLogs = JSON.parse(storedAudit);
+
+        const storedEmails = localStorage.getItem('academiq_email_logs_v2');
+        if (storedEmails) this.emailLogs = JSON.parse(storedEmails);
       } catch (e) {
         console.error('Storage parse error:', e);
       }
@@ -93,7 +139,7 @@ class MemoryStore {
     }
 
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'users', userId), { password: newPassword }, { merge: true }).catch((e) => {
+      setDoc(doc(db, 'users', userId), sanitizeForFirestore({ password: newPassword }), { merge: true }).catch((e) => {
         console.warn('Firestore password update error:', e);
       });
     }
@@ -110,6 +156,7 @@ class MemoryStore {
         localStorage.setItem('academiq_activities_v2', JSON.stringify(this.activities));
         localStorage.setItem('academiq_notifs_v2', JSON.stringify(this.notifications));
         localStorage.setItem('academiq_audit_v2', JSON.stringify(this.auditLogs));
+        localStorage.setItem('academiq_email_logs_v2', JSON.stringify(this.emailLogs));
       } catch (e) {
         console.error('Storage persist error:', e);
       }
@@ -237,7 +284,7 @@ class MemoryStore {
 
     // Sync new task to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), newTask).catch((e) => {
+      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore(newTask)).catch((e) => {
         console.warn('Firestore createTask error:', e);
       });
     }
@@ -353,7 +400,7 @@ class MemoryStore {
 
     // Sync status to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), { ...task, ...updates }, { merge: true }).catch((e) => {
+      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch((e) => {
         console.warn('Firestore updateTaskStatus error:', e);
       });
     }
@@ -391,7 +438,7 @@ class MemoryStore {
 
     // Sync update to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), { ...task, ...updates }, { merge: true }).catch((e) => {
+      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch((e) => {
         console.warn('Firestore updateTask error:', e);
       });
     }
@@ -459,10 +506,26 @@ class MemoryStore {
   }
 
   logEmail(emailLog: Omit<EmailLog, 'id'>): void {
-    this.emailLogs.unshift({
+    const logId = 'email_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const newEntry: EmailLog = {
       ...emailLog,
-      id: 'email_' + Date.now(),
-    });
+      id: logId,
+      timestamp: emailLog.timestamp || emailLog.sentAt || new Date().toISOString(),
+      sentAt: emailLog.sentAt || emailLog.timestamp || new Date().toISOString(),
+      eventType: emailLog.eventType || emailLog.type || 'NOTIFICATION',
+      type: emailLog.type || emailLog.eventType || 'NOTIFICATION',
+      sender: emailLog.sender || 'k.vijayakumar@klu.ac.in',
+    };
+
+    this.emailLogs.unshift(newEntry);
+    this.persist();
+
+    // Sync to Firestore emailLogs collection
+    if (isFirebaseConfigured && db) {
+      setDoc(doc(db, 'emailLogs', logId), sanitizeForFirestore(newEntry)).catch((e) => {
+        console.warn('Firestore logEmail error:', e);
+      });
+    }
   }
 
   getEmailLogs(): EmailLog[] {

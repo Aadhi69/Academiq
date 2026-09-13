@@ -83,8 +83,8 @@ export default function FacultyTaskDetailPage() {
         memoryStore.updateTask(task.id, { driveUrl: customDriveUrl }, user);
       }
 
-      // Mark as completed once drive link is uploaded
-      const updated = memoryStore.updateTaskStatus(task.id, 'COMPLETED', user);
+      // Mark as SUBMITTED once drive link is uploaded
+      const updated = memoryStore.updateTaskStatus(task.id, 'SUBMITTED', user);
       setConfirmModalOpen(false);
       setIsSubmitting(false);
 
@@ -98,7 +98,7 @@ export default function FacultyTaskDetailPage() {
           }).catch((e) => console.warn('Email notice error:', e));
         }
 
-        setStatusMessage('Deliverable uploaded! Work marked as COMPLETED.');
+        setStatusMessage('Deliverable uploaded! Work submitted to HOD for review.');
         setTimeout(() => setStatusMessage(''), 4000);
       }
     } catch (err) {

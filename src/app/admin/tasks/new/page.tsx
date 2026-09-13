@@ -49,11 +49,12 @@ export default function AssignNewWorkPage() {
     setErrorBanner('');
 
     try {
+      const trimmedInstructions = instructions.trim();
       const createdTask = memoryStore.createTask(
         {
           title: title.trim(),
           description: description.trim(),
-          instructions: instructions.trim() || undefined,
+          ...(trimmedInstructions ? { instructions: trimmedInstructions } : {}),
           priority,
           status: 'PENDING',
           dueDate: new Date(dueDate).toISOString(),

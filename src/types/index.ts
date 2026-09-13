@@ -109,11 +109,25 @@ export interface Notification {
 export interface EmailLog {
   id: string;
   taskId?: string;
+  eventType: string;
+  type?: string; // alias for backwards compatibility
   recipient: string;
-  type: string;
+  sender: string;
+  timestamp: string;
+  sentAt?: string; // alias for backwards compatibility
   status: 'SENT' | 'SIMULATED' | 'FAILED';
-  sentAt: string;
-  error?: string;
+  errorMessage?: string;
+  error?: string; // alias for backwards compatibility
+  messageId?: string;
+}
+
+export interface GmailIntegrationConfig {
+  connected: boolean;
+  senderEmail: string;
+  connectedAt?: string;
+  provider: string;
+  scope: string;
+  status: 'CONNECTED' | 'NOT_CONFIGURED' | 'ERROR';
 }
 
 export interface AuditLog {
