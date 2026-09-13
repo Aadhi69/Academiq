@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Derive base URL dynamically if not statically configured
-  const origin = req.nextUrl.origin || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  // Derive base URL dynamically or from server-only APP_URL
+  const origin = process.env.APP_URL || (req.nextUrl.origin !== 'null' ? req.nextUrl.origin : 'http://localhost:3000');
   const redirectUri = `${origin}/api/auth/gmail/callback`;
 
   const scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email');

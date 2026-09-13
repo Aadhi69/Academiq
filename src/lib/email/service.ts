@@ -26,7 +26,7 @@ export async function dispatchEmailEvent(payload: SendEventPayload): Promise<{
 }> {
   try {
     const isBrowser = typeof window !== 'undefined';
-    const baseUrl = isBrowser ? '' : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = isBrowser ? '' : (process.env.APP_URL || 'http://localhost:3000');
 
     const currentUser = isBrowser ? memoryStore.getUsers().find((u) => u.role === 'ADMIN') : null;
 

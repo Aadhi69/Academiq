@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { eventType, task, recipient, assignedBy, faculty, comment, hodName, to, subject: customSubject, html: customHtml } = body;
 
-    const origin = req.nextUrl.origin || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const origin = process.env.APP_URL || (req.nextUrl.origin !== 'null' ? req.nextUrl.origin : 'http://localhost:3000');
     let targetRecipient = to;
     let emailSubject = customSubject || '';
     let emailHtml = customHtml || '';

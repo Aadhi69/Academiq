@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid recipient email address is required.' }, { status: 400 });
     }
 
-    const origin = req.nextUrl.origin || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const origin = process.env.APP_URL || (req.nextUrl.origin !== 'null' ? req.nextUrl.origin : 'http://localhost:3000');
     const timestamp = new Date().toISOString();
 
     const { subject, html } = renderTestEmail({
