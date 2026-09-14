@@ -64,9 +64,68 @@ export default function AdminFacultyPage() {
         </div>
       </div>
 
-      {/* Faculty Table */}
+      {/* Faculty Table & Mobile Cards */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View (Screens < sm) */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {filteredFaculty.map((f) => {
+            const stats = getFacultyWorkload(f, tasks);
+            return (
+              <div key={f.id} className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 border border-blue-100">
+                      {f.name.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <Link href={`/admin/faculty/${f.id}`} className="font-bold text-sm text-slate-900 hover:text-blue-600 truncate block">
+                        {f.name}
+                      </Link>
+                      <div className="text-[11px] text-slate-500 truncate">{f.designation}</div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-slate-900">{stats.completionRate}%</div>
+                    <div className="text-[10px] text-slate-400 font-medium">Completed</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-50 text-center text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Total</span>
+                    <span className="font-bold text-slate-900">{stats.totalAssigned}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Active</span>
+                    <span className="font-bold text-blue-600">{stats.pending + stats.inProgress}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Done</span>
+                    <span className="font-bold text-emerald-600">{stats.completed}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {f.kluid} &bull; {f.eduid}
+                  </span>
+
+                  <Link
+                    href={`/admin/faculty/${f.id}`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition-colors"
+                  >
+                    <span>View Details</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop Table View (Screens >= sm) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">

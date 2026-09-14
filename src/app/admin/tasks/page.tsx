@@ -192,7 +192,7 @@ export default function AdminTasksPage() {
         </div>
       </div>
 
-      {/* Task Table */}
+      {/* Task Table & Mobile Cards */}
       {filteredTasks.length === 0 ? (
         <EmptyState
           title="No work assignments found"
@@ -202,7 +202,74 @@ export default function AdminTasksPage() {
         />
       ) : (
         <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile Card View (Screens < sm) */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {filteredTasks.map((t) => {
+              const overdue = isTaskOverdue(t);
+              return (
+                <div key={t.id} className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <PriorityBadge priority={t.priority} />
+                    <StatusBadge status={t.status} isOverdue={overdue} />
+                  </div>
+
+                  <div>
+                    <Link href={`/admin/tasks/${t.id}`} className="font-bold text-sm text-slate-900 hover:text-blue-600 block">
+                      {t.title}
+                    </Link>
+                    <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                      {t.description}
+                    </p>
+                    <div className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5 font-medium">
+                      <span className="text-slate-400">Assigned:</span>
+                      <span className="text-slate-800 font-semibold truncate">
+                        {t.assignees?.map((a) => a.name).join(', ') || 'Unassigned'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Deadline</span>
+                      <span className={overdue ? 'text-rose-600 font-bold' : 'text-slate-700 font-semibold'}>
+                        {new Date(t.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/admin/tasks/${t.id}`}
+                        className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs transition-colors"
+                      >
+                        Manage
+                      </Link>
+                      {t.driveUrl && (
+                        <a
+                          href={t.driveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                          title="Open Google Drive Folder"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => handleDeleteTask(t.id, t.title)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Delete Task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View (Screens >= sm) */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/60 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">

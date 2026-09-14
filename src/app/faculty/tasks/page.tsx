@@ -123,7 +123,62 @@ export default function FacultyTasksPage() {
         />
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile Card View (Screens < sm) */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {filtered.map((t) => {
+              const overdue = isTaskOverdue(t);
+              return (
+                <div key={t.id} className="p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <PriorityBadge priority={t.priority} />
+                    <StatusBadge status={t.status} isOverdue={overdue} />
+                  </div>
+
+                  <div>
+                    <Link href={`/faculty/tasks/${t.id}`} className="font-bold text-sm text-slate-900 hover:text-blue-600 block">
+                      {t.title}
+                    </Link>
+                    <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                      {t.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Deadline</span>
+                      <span className={`font-semibold ${overdue ? 'text-rose-600' : 'text-slate-700'}`}>
+                        {new Date(t.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/faculty/tasks/${t.id}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-colors"
+                      >
+                        <span>Open Task</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </Link>
+                      {t.driveUrl && (
+                        <a
+                          href={t.driveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600"
+                          title="Open Google Drive Submission Folder"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View (Screens >= sm) */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">

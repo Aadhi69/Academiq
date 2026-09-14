@@ -133,6 +133,35 @@ class MemoryStore {
     this.isFirestoreInitialized = true;
 
     try {
+      // Immediate direct fetch of remote tasks to eliminate latency on mobile networks
+      getDocs(collection(db, 'tasks')).then((snapshot) => {
+        if (!snapshot.empty) {
+          const remoteTasks: Task[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as Task;
+            remoteTasks.push({ ...data, id: docSnap.id });
+          });
+          remoteTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          this.tasks = remoteTasks;
+
+          const newAssignees: TaskAssignee[] = [];
+          remoteTasks.forEach((t) => {
+            t.assigneeIds?.forEach((uid) => {
+              newAssignees.push({
+                id: `asgn_${t.id}_${uid}`,
+                taskId: t.id,
+                userId: uid,
+                createdAt: t.createdAt || new Date().toISOString(),
+              });
+            });
+          });
+          this.assignees = newAssignees;
+          this.persist();
+        }
+      }).catch((err) => {
+        console.warn('Initial direct getDocs tasks note:', err);
+      });
+
       // 1. Real-time Tasks sync from Cloud Firestore
       onSnapshot(
         collection(db, 'tasks'),
@@ -309,11 +338,16 @@ class MemoryStore {
       const assigneeIds = recordAssigneeIds.length > 0 ? recordAssigneeIds : (task.assigneeIds || []);
       
       const assignees = this.users.filter((u) => 
-        assigneeIds.includes(u.id) || 
-        assigneeIds.includes(u.email) || 
-        assigneeIds.includes(u.kluid)
+        assigneeIds.some((id) => {
+          const clean = (id || '').trim().toLowerCase();
+          return (
+            clean === u.id.toLowerCase() ||
+            clean === u.email.toLowerCase() ||
+            clean === u.kluid.toLowerCase()
+          );
+        })
       );
-      const createdBy = this.users.find((u) => u.id === task.createdById || u.email === task.createdById);
+      const createdBy = this.users.find((u) => u.id === task.createdById || u.email.toLowerCase() === (task.createdById || '').toLowerCase());
       return {
         ...task,
         assigneeIds,
@@ -647,15 +681,32 @@ class MemoryStore {
 
 export const memoryStore = new MemoryStore();
 
-// Task assignment helper across ID, email, or kluid
+// Task assignment helper across ID, email, or kluid (case-insensitive and robust)
 export function isTaskAssignedToUser(task: Task, user: User | null | undefined): boolean {
   if (!task || !user) return false;
+  const cleanUserId = (user.id || '').trim().toLowerCase();
+  const cleanEmail = (user.email || '').trim().toLowerCase();
+  const cleanKluId = (user.kluid || '').trim().toLowerCase();
+
   const ids = task.assigneeIds || [];
-  return ids.some((id) => 
-    id === user.id || 
-    id.toLowerCase() === (user.email || '').toLowerCase() || 
-    id.toLowerCase() === (user.kluid || '').toLowerCase()
-  );
+  const matchesDirectId = ids.some((id) => {
+    const clean = (id || '').trim().toLowerCase();
+    return clean === cleanUserId || clean === cleanEmail || clean === cleanKluId;
+  });
+
+  if (matchesDirectId) return true;
+
+  // Also check populated assignees list if available
+  if (task.assignees && Array.isArray(task.assignees)) {
+    return task.assignees.some((a) => {
+      const aId = (a.id || '').trim().toLowerCase();
+      const aEmail = (a.email || '').trim().toLowerCase();
+      const aKlu = (a.kluid || '').trim().toLowerCase();
+      return aId === cleanUserId || aEmail === cleanEmail || aKlu === cleanKluId;
+    });
+  }
+
+  return false;
 }
 
 // Overdue helper
