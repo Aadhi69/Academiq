@@ -36,8 +36,21 @@ export default function FacultyDashboardPage() {
     const unsub = memoryStore.subscribe(() => {
       loadData();
     });
+
+    const handleFocus = () => loadData();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       unsub();
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user]);
 

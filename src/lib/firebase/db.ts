@@ -133,56 +133,79 @@ class MemoryStore {
     this.isFirestoreInitialized = true;
 
     try {
-      // Immediate direct fetch of remote tasks to eliminate latency on mobile networks
+      // 1. Immediate direct fetch of remote tasks to eliminate latency on mobile networks
       getDocs(collection(db, 'tasks')).then((snapshot) => {
+        const remoteMap = new Map<string, Task>();
         if (!snapshot.empty) {
-          const remoteTasks: Task[] = [];
           snapshot.forEach((docSnap) => {
             const data = docSnap.data() as Task;
-            remoteTasks.push({ ...data, id: docSnap.id });
+            remoteMap.set(docSnap.id, { ...data, id: docSnap.id });
           });
-          remoteTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-          this.tasks = remoteTasks;
+        }
 
-          const newAssignees: TaskAssignee[] = [];
-          remoteTasks.forEach((t) => {
-            t.assigneeIds?.forEach((uid) => {
-              newAssignees.push({
-                id: `asgn_${t.id}_${uid}`,
-                taskId: t.id,
-                userId: uid,
-                createdAt: t.createdAt || new Date().toISOString(),
-              });
+        // If local had tasks not yet uploaded to Firestore, push them up
+        this.tasks.forEach((lt) => {
+          if (!remoteMap.has(lt.id)) {
+            remoteMap.set(lt.id, lt);
+            if (db) {
+              setDoc(doc(db, 'tasks', lt.id), sanitizeForFirestore(lt)).catch(() => {});
+            }
+          }
+        });
+
+        const mergedTasks = Array.from(remoteMap.values());
+        mergedTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        this.tasks = mergedTasks;
+
+        const newAssignees: TaskAssignee[] = [];
+        mergedTasks.forEach((t) => {
+          t.assigneeIds?.forEach((uid) => {
+            newAssignees.push({
+              id: `asgn_${t.id}_${uid}`,
+              taskId: t.id,
+              userId: uid,
+              createdAt: t.createdAt || new Date().toISOString(),
             });
           });
-          this.assignees = newAssignees;
-          this.persist();
-        }
+        });
+        this.assignees = newAssignees;
+        this.persist();
       }).catch((err) => {
         console.warn('Initial direct getDocs tasks note:', err);
       });
 
-      // 1. Real-time Tasks sync from Cloud Firestore
+      // 2. Real-time Tasks sync from Cloud Firestore
       onSnapshot(
         collection(db, 'tasks'),
         (snapshot) => {
-          const remoteTasks: Task[] = [];
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as Task;
-            remoteTasks.push({
-              ...data,
-              id: docSnap.id,
+          const remoteMap = new Map<string, Task>();
+          if (!snapshot.empty) {
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as Task;
+              remoteMap.set(docSnap.id, {
+                ...data,
+                id: docSnap.id,
+              });
             });
+          }
+
+          // If local has tasks not yet in snapshot, preserve & push
+          this.tasks.forEach((lt) => {
+            if (!remoteMap.has(lt.id)) {
+              remoteMap.set(lt.id, lt);
+              if (db) {
+                setDoc(doc(db, 'tasks', lt.id), sanitizeForFirestore(lt)).catch(() => {});
+              }
+            }
           });
 
-          // Sort by creation date descending
-          remoteTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
-          this.tasks = remoteTasks;
+          const mergedTasks = Array.from(remoteMap.values());
+          mergedTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          this.tasks = mergedTasks;
 
           // Rebuild assignees from assigneeIds
           const newAssignees: TaskAssignee[] = [];
-          remoteTasks.forEach((t) => {
+          mergedTasks.forEach((t) => {
             t.assigneeIds?.forEach((uid) => {
               newAssignees.push({
                 id: `asgn_${t.id}_${uid}`,
