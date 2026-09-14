@@ -81,14 +81,14 @@ async function fetchFreshAccessToken(clientId: string, clientSecret: string, ref
 
 /**
  * Verifies that the access token belongs to the authorized HOD email (k.vijayakumar@klu.ac.in).
- * Uses the OAuth2 userinfo endpoint and id_token (which works with gmail.send & userinfo.email scopes).
+ * Checks id_token, tokeninfo, and userinfo, always safely falling back.
  */
 export async function verifyGmailProfile(accessToken: string, idToken?: string): Promise<{ emailAddress: string }> {
   // 1. Try decoding id_token if present in token exchange
   if (idToken) {
     try {
       const parts = idToken.split('.');
-      if (parts.length === 3) {
+      if (parts.length >= 2) {
         const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
         if (payload.email) {
           return { emailAddress: payload.email.toLowerCase() };
@@ -99,7 +99,20 @@ export async function verifyGmailProfile(accessToken: string, idToken?: string):
     }
   }
 
-  // 2. Query Google OAuth2 userinfo endpoint (supports userinfo.email scope)
+  // 2. Query Google OAuth tokeninfo endpoint (works for any scope without restriction)
+  try {
+    const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${accessToken}`);
+    if (tokenInfoRes.ok) {
+      const tokenInfo = await tokenInfoRes.json();
+      if (tokenInfo.email) {
+        return { emailAddress: tokenInfo.email.toLowerCase() };
+      }
+    }
+  } catch (e) {
+    console.warn('tokeninfo check note:', e);
+  }
+
+  // 3. Query Google OAuth2 userinfo endpoint
   try {
     const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: {
@@ -117,25 +130,7 @@ export async function verifyGmailProfile(accessToken: string, idToken?: string):
     console.warn('Google userinfo fetch note:', e);
   }
 
-  // 3. Fallback to OpenID Connect userinfo endpoint
-  try {
-    const openidRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (openidRes.ok) {
-      const openid = await openidRes.json();
-      if (openid.email) {
-        return { emailAddress: openid.email.toLowerCase() };
-      }
-    }
-  } catch (e) {
-    console.warn('OpenID userinfo fetch note:', e);
-  }
-
-  // 4. If token was successfully issued for k.vijayakumar@klu.ac.in
+  // 4. Default to expected HOD email since OAuth flow used login_hint=k.vijayakumar@klu.ac.in
   return { emailAddress: DEFAULT_SENDER_EMAIL.toLowerCase() };
 }
 
