@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { memoryStore, getFacultyWorkload, isTaskOverdue } from '@/lib/firebase/db';
+import { memoryStore, getFacultyWorkload, isTaskOverdue, isTaskAssignedToUser } from '@/lib/firebase/db';
 import { User, Task } from '@/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -50,7 +50,7 @@ export default function FacultyWorkloadDetailPage() {
   }
 
   const stats = getFacultyWorkload(faculty, tasks);
-  const assignedTasks = tasks.filter((t) => t.assigneeIds?.includes(faculty.id));
+  const assignedTasks = tasks.filter((t) => isTaskAssignedToUser(t, faculty));
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

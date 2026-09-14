@@ -89,6 +89,7 @@ class MemoryStore {
   private auditLogs: AuditLog[] = [...SEED_AUDIT_LOGS];
   private emailLogs: EmailLog[] = [];
   private listeners: Set<() => void> = new Set();
+  private isFirestoreInitialized = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -121,6 +122,111 @@ class MemoryStore {
       } catch (e) {
         console.error('Storage parse error:', e);
       }
+
+      // Initialize real-time Cloud Firestore synchronization
+      this.initFirestoreListeners();
+    }
+  }
+
+  public initFirestoreListeners() {
+    if (typeof window === 'undefined' || !isFirebaseConfigured || !db || this.isFirestoreInitialized) return;
+    this.isFirestoreInitialized = true;
+
+    try {
+      // 1. Real-time Tasks sync from Cloud Firestore
+      onSnapshot(
+        collection(db, 'tasks'),
+        (snapshot) => {
+          const remoteTasks: Task[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as Task;
+            remoteTasks.push({
+              ...data,
+              id: docSnap.id,
+            });
+          });
+
+          // Sort by creation date descending
+          remoteTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+          this.tasks = remoteTasks;
+
+          // Rebuild assignees from assigneeIds
+          const newAssignees: TaskAssignee[] = [];
+          remoteTasks.forEach((t) => {
+            t.assigneeIds?.forEach((uid) => {
+              newAssignees.push({
+                id: `asgn_${t.id}_${uid}`,
+                taskId: t.id,
+                userId: uid,
+                createdAt: t.createdAt || new Date().toISOString(),
+              });
+            });
+          });
+          this.assignees = newAssignees;
+
+          this.persist();
+        },
+        (err) => {
+          console.warn('Firestore tasks onSnapshot warning:', err);
+        }
+      );
+
+      // 2. Real-time Users sync from Cloud Firestore
+      onSnapshot(
+        collection(db, 'users'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteUsers: User[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteUsers.push({ ...(docSnap.data() as User), id: docSnap.id });
+            });
+            if (remoteUsers.length > 0) {
+              this.users = remoteUsers;
+              this.notify();
+            }
+          }
+        },
+        (err) => {
+          console.warn('Firestore users onSnapshot warning:', err);
+        }
+      );
+
+      // 3. Real-time Activities sync from Cloud Firestore
+      onSnapshot(
+        collection(db, 'activities'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteActivities: TaskActivity[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteActivities.push({ ...(docSnap.data() as TaskActivity), id: docSnap.id });
+            });
+            remoteActivities.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.activities = remoteActivities;
+            this.persist();
+          }
+        },
+        () => {}
+      );
+
+      // 4. Real-time Audit logs sync from Cloud Firestore
+      onSnapshot(
+        collection(db, 'audit_logs'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteLogs: AuditLog[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteLogs.push({ ...(docSnap.data() as AuditLog), id: docSnap.id });
+            });
+            remoteLogs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.auditLogs = remoteLogs;
+            this.persist();
+          }
+        },
+        () => {}
+      );
+    } catch (err) {
+      console.warn('Error establishing Firestore snapshot listeners:', err);
     }
   }
 
@@ -192,16 +298,22 @@ class MemoryStore {
   }
 
   getUser(id: string): User | undefined {
-    return this.users.find((u) => u.id === id || u.email === id || u.kluid.toLowerCase() === id.toLowerCase());
+    return this.users.find((u) => u.id === id || u.email.toLowerCase() === id.toLowerCase() || u.kluid.toLowerCase() === id.toLowerCase());
   }
 
   // Tasks with relations
   getTasks(): Task[] {
     return this.tasks.map((task) => {
       const taskAssigneeRecords = this.assignees.filter((a) => a.taskId === task.id);
-      const assigneeIds = taskAssigneeRecords.map((a) => a.userId);
-      const assignees = this.users.filter((u) => assigneeIds.includes(u.id));
-      const createdBy = this.users.find((u) => u.id === task.createdById);
+      const recordAssigneeIds = taskAssigneeRecords.map((a) => a.userId);
+      const assigneeIds = recordAssigneeIds.length > 0 ? recordAssigneeIds : (task.assigneeIds || []);
+      
+      const assignees = this.users.filter((u) => 
+        assigneeIds.includes(u.id) || 
+        assigneeIds.includes(u.email) || 
+        assigneeIds.includes(u.kluid)
+      );
+      const createdBy = this.users.find((u) => u.id === task.createdById || u.email === task.createdById);
       return {
         ...task,
         assigneeIds,
@@ -535,6 +647,17 @@ class MemoryStore {
 
 export const memoryStore = new MemoryStore();
 
+// Task assignment helper across ID, email, or kluid
+export function isTaskAssignedToUser(task: Task, user: User | null | undefined): boolean {
+  if (!task || !user) return false;
+  const ids = task.assigneeIds || [];
+  return ids.some((id) => 
+    id === user.id || 
+    id.toLowerCase() === (user.email || '').toLowerCase() || 
+    id.toLowerCase() === (user.kluid || '').toLowerCase()
+  );
+}
+
 // Overdue helper
 export function isTaskOverdue(task: Task): boolean {
   if (task.status === 'COMPLETED' || task.status === 'SUBMITTED') {
@@ -621,7 +744,7 @@ export function getDepartmentKpis(tasks: Task[]): DepartmentKpis {
 }
 
 export function getFacultyWorkload(faculty: User, tasks: Task[]): FacultyWorkloadStats {
-  const assignedTasks = tasks.filter((t) => t.assigneeIds?.includes(faculty.id));
+  const assignedTasks = tasks.filter((t) => isTaskAssignedToUser(t, faculty));
   const totalAssigned = assignedTasks.length;
 
   let pending = 0;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { memoryStore, getFacultyWorkload, isTaskOverdue, formatDueDateRelative } from '@/lib/firebase/db';
+import { memoryStore, getFacultyWorkload, isTaskOverdue, formatDueDateRelative, isTaskAssignedToUser } from '@/lib/firebase/db';
 import { Task } from '@/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -27,7 +27,7 @@ export default function FacultyDashboardPage() {
   const loadData = () => {
     if (!user) return;
     const all = memoryStore.getTasks();
-    const myTasks = all.filter((t) => t.assigneeIds?.includes(user.id));
+    const myTasks = all.filter((t) => isTaskAssignedToUser(t, user));
     setTasks(myTasks);
   };
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { memoryStore, isTaskOverdue } from '@/lib/firebase/db';
+import { memoryStore, isTaskOverdue, isTaskAssignedToUser } from '@/lib/firebase/db';
 import { Task } from '@/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -32,7 +32,7 @@ export default function FacultyTasksPage() {
   const loadData = () => {
     if (!user) return;
     const all = memoryStore.getTasks();
-    setTasks(all.filter((t) => t.assigneeIds?.includes(user.id)));
+    setTasks(all.filter((t) => isTaskAssignedToUser(t, user)));
   };
 
   useEffect(() => {
