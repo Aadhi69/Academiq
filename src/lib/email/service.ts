@@ -43,14 +43,16 @@ export async function dispatchEmailEvent(payload: SendEventPayload): Promise<{
     const data = await res.json();
 
     const timestamp = new Date().toISOString();
-    const recipientEmail = payload.recipient?.email || payload.to || (payload.eventType === 'SUBMISSION_RECEIVED' ? 'k.vijayakumar@klu.ac.in' : 'recipient@klu.ac.in');
+    const hod = isBrowser ? memoryStore.getUsers().find((u) => u.role === 'ADMIN') : null;
+    const hodEmail = hod?.email || 'hodeee@klu.ac.in';
+    const recipientEmail = payload.recipient?.email || payload.to || (payload.eventType === 'SUBMISSION_RECEIVED' ? hodEmail : 'faculty@klu.ac.in');
 
     const logEntry: Omit<EmailLog, 'id'> = {
       taskId: payload.taskId || payload.task?.id,
       eventType: payload.eventType,
       type: payload.eventType,
       recipient: recipientEmail,
-      sender: 'k.vijayakumar@klu.ac.in',
+      sender: hodEmail,
       timestamp,
       sentAt: timestamp,
       status: data.success ? (data.simulated ? 'SIMULATED' : 'SENT') : 'FAILED',
@@ -70,14 +72,14 @@ export async function dispatchEmailEvent(payload: SendEventPayload): Promise<{
     console.warn('[Academiq Email Engine] Non-blocking dispatch notice:', err?.message);
 
     const timestamp = new Date().toISOString();
-    const recipientEmail = payload.recipient?.email || payload.to || 'recipient@klu.ac.in';
+    const recipientEmail = payload.recipient?.email || payload.to || 'faculty@klu.ac.in';
 
     memoryStore.logEmail({
       taskId: payload.taskId || payload.task?.id,
       eventType: payload.eventType,
       type: payload.eventType,
       recipient: recipientEmail,
-      sender: 'k.vijayakumar@klu.ac.in',
+      sender: 'hodeee@klu.ac.in',
       timestamp,
       sentAt: timestamp,
       status: 'FAILED',

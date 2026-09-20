@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set('scope', 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email openid');
   authUrl.searchParams.set('access_type', 'offline');
   authUrl.searchParams.set('prompt', 'consent');
-  authUrl.searchParams.set('login_hint', 'k.vijayakumar@klu.ac.in');
+  authUrl.searchParams.set('login_hint', process.env.GMAIL_SENDER_EMAIL || 'hodeee@klu.ac.in');
 
   return NextResponse.redirect(authUrl.toString());
 }

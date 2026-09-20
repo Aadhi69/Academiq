@@ -236,7 +236,11 @@ export default function LoginPage() {
                   required
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="e.g. k.vijayakumar@klu.ac.in or klu1043"
+                  placeholder={
+                    roleTab === 'ADMIN'
+                      ? 'e.g. hodeee@klu.ac.in or hodee@klu.ac.in'
+                      : 'e.g. k.vijayakumar@klu.ac.in or klu1043'
+                  }
                   className="w-full pl-9 pr-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200/80 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

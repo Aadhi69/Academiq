@@ -366,7 +366,49 @@ class MemoryStore {
   }
 
   getUser(id: string): User | undefined {
-    return this.users.find((u) => u.id === id || u.email.toLowerCase() === id.toLowerCase() || u.kluid.toLowerCase() === id.toLowerCase());
+    const clean = (id || '').trim().toLowerCase();
+    if (!clean) return undefined;
+
+    // Admin / HOD aliases
+    if (
+      clean === 'user_hodeee' ||
+      clean === 'hodeee@klu.ac.in' ||
+      clean === 'hodee@klu.ac.in' ||
+      clean === 'hodeee' ||
+      clean === 'hodee' ||
+      clean === 'admin' ||
+      clean === 'hod' ||
+      clean === 'kvkhod'
+    ) {
+      return this.users.find((u) => u.id === 'user_hodeee' || u.role === 'ADMIN');
+    }
+
+    // Dr. K. Vijayakumar (Faculty) aliases
+    if (
+      clean === 'user_klu1043' ||
+      clean === 'k.vijayakumar@klu.ac.in' ||
+      clean === 'klu1043' ||
+      clean === '1043' ||
+      clean === 'kvkeee'
+    ) {
+      return this.users.find((u) => u.id === 'user_klu1043' || u.kluid.toLowerCase() === 'klu1043');
+    }
+
+    // Direct and numeric / KLU ID matches
+    return this.users.find((u) => {
+      const uEmail = u.email.toLowerCase();
+      const uKlu = u.kluid.toLowerCase();
+      const uId = u.id.toLowerCase();
+      const uEdu = (u.eduid || '').toLowerCase();
+      return (
+        uId === clean ||
+        uEmail === clean ||
+        uKlu === clean ||
+        uKlu === `klu${clean}` ||
+        (clean.startsWith('klu') && uKlu === clean.replace(/^klu/, '')) ||
+        uEdu === clean
+      );
+    });
   }
 
   // Tasks with relations
@@ -873,13 +915,36 @@ export async function getUserByEmail(identifier: string): Promise<User | null> {
   const normalized = (identifier || '').trim().toLowerCase();
   if (!normalized) return null;
 
-  // 1. Check in-memory store
-  const localMatch = memoryStore.getUsers().find((u) => 
-    u.email.toLowerCase() === normalized ||
-    u.kluid.toLowerCase() === normalized ||
-    u.id.toLowerCase() === normalized ||
-    (u.eduid && u.eduid.toLowerCase() === normalized)
-  );
+  // 1. Check in-memory store using getUser (which contains comprehensive alias maps)
+  const localMatch = memoryStore.getUser(normalized);
+  if (localMatch) return localMatch;
+
+  // Check aliases for Admin
+  if (
+    normalized === 'hodeee@klu.ac.in' ||
+    normalized === 'hodee@klu.ac.in' ||
+    normalized === 'hodeee' ||
+    normalized === 'hodee' ||
+    normalized === 'admin' ||
+    normalized === 'hod' ||
+    normalized === 'user_hodeee' ||
+    normalized === 'kvkhod'
+  ) {
+    const adminUser = memoryStore.getUsers().find((u) => u.id === 'user_hodeee' || u.role === 'ADMIN') || SEED_USERS[0];
+    if (adminUser) return adminUser;
+  }
+
+  // Check aliases for Faculty Dr. Vijayakumar
+  if (
+    normalized === 'k.vijayakumar@klu.ac.in' ||
+    normalized === 'klu1043' ||
+    normalized === '1043' ||
+    normalized === 'user_klu1043' ||
+    normalized === 'kvkeee'
+  ) {
+    const facultyUser = memoryStore.getUsers().find((u) => u.id === 'user_klu1043') || SEED_USERS[1];
+    if (facultyUser) return facultyUser;
+  }
 
   // 2. Query Firestore if configured
   if (isFirebaseConfigured && db) {
@@ -902,6 +967,16 @@ export async function getUserByEmail(identifier: string): Promise<User | null> {
         return { ...docData, id: snapKlu.docs[0].id };
       }
 
+      // Search by numeric KLU ID with 'klu' prefix
+      if (!normalized.startsWith('klu')) {
+        const qKluNum = query(usersRef, where('kluid', '==', `klu${normalized}`));
+        const snapKluNum = await getDocs(qKluNum);
+        if (!snapKluNum.empty) {
+          const docData = snapKluNum.docs[0].data() as User;
+          return { ...docData, id: snapKluNum.docs[0].id };
+        }
+      }
+
       // Check direct document ID
       const directSnap = await getDoc(doc(db, 'users', normalized));
       if (directSnap.exists()) {
@@ -913,7 +988,7 @@ export async function getUserByEmail(identifier: string): Promise<User | null> {
     }
   }
 
-  return localMatch || null;
+  return null;
 }
 
 /**

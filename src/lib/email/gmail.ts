@@ -3,7 +3,7 @@
  * Dispatches emails using Dr. K. Vijayakumar's authorized account via OAuth 2.0.
  */
 
-export const DEFAULT_SENDER_EMAIL = 'k.vijayakumar@klu.ac.in';
+export const DEFAULT_SENDER_EMAIL = 'hodeee@klu.ac.in';
 export const REQUIRED_GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 interface GmailSendOptions {
