@@ -53,7 +53,7 @@ export function RevisionModal({
               rows={4}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="e.g., Please update the documentation for Section 2.3 and attach the revised project sanction letters."
+              placeholder="Please specify the required updates and attach any relevant reference instructions."
               className="w-full px-3 py-2.5 rounded-xl text-xs bg-white border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
             />
           </div>

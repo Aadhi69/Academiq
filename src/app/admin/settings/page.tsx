@@ -231,7 +231,7 @@ export default function AdminSettingsPage() {
               required
               value={testEmailTo}
               onChange={(e) => setTestEmailTo(e.target.value)}
-              placeholder="Enter recipient email (e.g. faculty email)"
+              placeholder="Enter recipient email address"
               className="flex-1 px-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
             <button

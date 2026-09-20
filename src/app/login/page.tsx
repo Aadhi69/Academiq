@@ -18,7 +18,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loginWithGoogle, loginWithEmail } = useAuth();
+  const { loginWithGoogle, loginWithEmail, logout } = useAuth();
   const [roleTab, setRoleTab] = useState<'ADMIN' | 'FACULTY'>('ADMIN');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -35,6 +35,17 @@ export default function LoginPage() {
     const res = await loginWithGoogle();
     setIsLoading(false);
     if (res.success) {
+      if (roleTab === 'ADMIN' && res.role !== 'ADMIN') {
+        logout();
+        setErrorMsg('Access restricted: This account does not have Head of Department (HOD) / Admin privileges. Please use the Faculty Login tab.');
+        return;
+      }
+      if (roleTab === 'FACULTY' && res.role !== 'FACULTY') {
+        logout();
+        setErrorMsg('Access restricted: Admin accounts cannot sign in through the Faculty tab. Please use the HOD / Admin Login tab.');
+        return;
+      }
+
       if (res.role === 'ADMIN') {
         router.push('/admin/dashboard');
       } else {
@@ -55,6 +66,17 @@ export default function LoginPage() {
     setIsLoading(false);
 
     if (res.success) {
+      if (roleTab === 'ADMIN' && res.role !== 'ADMIN') {
+        logout();
+        setErrorMsg('Access restricted: This account does not have Head of Department (HOD) / Admin privileges. Please use the Faculty Login tab.');
+        return;
+      }
+      if (roleTab === 'FACULTY' && res.role !== 'FACULTY') {
+        logout();
+        setErrorMsg('Access restricted: Admin accounts cannot sign in through the Faculty tab. Please use the HOD / Admin Login tab.');
+        return;
+      }
+
       if (res.role === 'ADMIN') {
         router.push('/admin/dashboard');
       } else {
@@ -145,7 +167,8 @@ export default function LoginPage() {
             <button
               onClick={() => {
                 setRoleTab('ADMIN');
-                setEmailInput('hodeee@klu.ac.in');
+                setEmailInput('');
+                setErrorMsg('');
               }}
               className={`w-1/2 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                 roleTab === 'ADMIN'
@@ -159,7 +182,8 @@ export default function LoginPage() {
             <button
               onClick={() => {
                 setRoleTab('FACULTY');
-                setEmailInput('k.vijayakumar@klu.ac.in');
+                setEmailInput('');
+                setErrorMsg('');
               }}
               className={`w-1/2 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                 roleTab === 'FACULTY'
@@ -238,8 +262,8 @@ export default function LoginPage() {
                   onChange={(e) => setEmailInput(e.target.value)}
                   placeholder={
                     roleTab === 'ADMIN'
-                      ? 'e.g. hodeee@klu.ac.in or hodee@klu.ac.in'
-                      : 'e.g. k.vijayakumar@klu.ac.in or klu1043'
+                      ? 'Institutional Email or Admin ID'
+                      : 'Institutional Email or KLU ID'
                   }
                   className="w-full pl-9 pr-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200/80 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -251,7 +275,6 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold text-slate-700">
                   Password
                 </label>
-                <span className="text-[10px] text-blue-600 font-medium">Initial: EEE@Kare</span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -259,7 +282,7 @@ export default function LoginPage() {
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="Enter your password (e.g. EEE@Kare)"
+                  placeholder="Enter your password"
                   className="w-full pl-9 pr-3.5 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200/80 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
