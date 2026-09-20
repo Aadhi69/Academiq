@@ -98,7 +98,24 @@ class MemoryStore {
         if (storedUsers) {
           const parsed = JSON.parse(storedUsers);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this.users = parsed;
+            // Merge parsed with SEED_USERS so user_hodeee is ALWAYS present as ADMIN and user_klu1043 as FACULTY
+            const userMap = new Map<string, User>();
+            SEED_USERS.forEach((su) => userMap.set(su.id, su));
+            parsed.forEach((pu: User) => {
+              if (pu && pu.id) {
+                const existing = userMap.get(pu.id);
+                if (existing) {
+                  userMap.set(pu.id, {
+                    ...existing,
+                    password: pu.password || existing.password,
+                    mobile: pu.mobile || existing.mobile,
+                  });
+                } else if (pu.id !== 'user_hodeee') {
+                  userMap.set(pu.id, pu);
+                }
+              }
+            });
+            this.users = Array.from(userMap.values());
           }
         }
 
@@ -133,7 +150,7 @@ class MemoryStore {
     this.isFirestoreInitialized = true;
 
     try {
-      // 1. Immediate direct fetch of remote tasks to eliminate latency on mobile networks
+      // 1. Tasks initial fetch & real-time sync
       getDocs(collection(db, 'tasks')).then((snapshot) => {
         const remoteMap = new Map<string, Task>();
         if (!snapshot.empty) {
@@ -143,7 +160,6 @@ class MemoryStore {
           });
         }
 
-        // If local had tasks not yet uploaded to Firestore, push them up
         this.tasks.forEach((lt) => {
           if (!remoteMap.has(lt.id)) {
             remoteMap.set(lt.id, lt);
@@ -170,11 +186,8 @@ class MemoryStore {
         });
         this.assignees = newAssignees;
         this.persist();
-      }).catch((err) => {
-        console.warn('Initial direct getDocs tasks note:', err);
-      });
+      }).catch(() => {});
 
-      // 2. Real-time Tasks sync from Cloud Firestore
       onSnapshot(
         collection(db, 'tasks'),
         (snapshot) => {
@@ -182,14 +195,10 @@ class MemoryStore {
           if (!snapshot.empty) {
             snapshot.forEach((docSnap) => {
               const data = docSnap.data() as Task;
-              remoteMap.set(docSnap.id, {
-                ...data,
-                id: docSnap.id,
-              });
+              remoteMap.set(docSnap.id, { ...data, id: docSnap.id });
             });
           }
 
-          // If local has tasks not yet in snapshot, preserve & push
           this.tasks.forEach((lt) => {
             if (!remoteMap.has(lt.id)) {
               remoteMap.set(lt.id, lt);
@@ -203,7 +212,6 @@ class MemoryStore {
           mergedTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
           this.tasks = mergedTasks;
 
-          // Rebuild assignees from assigneeIds
           const newAssignees: TaskAssignee[] = [];
           mergedTasks.forEach((t) => {
             t.assigneeIds?.forEach((uid) => {
@@ -216,15 +224,34 @@ class MemoryStore {
             });
           });
           this.assignees = newAssignees;
-
           this.persist();
         },
-        (err) => {
-          console.warn('Firestore tasks onSnapshot warning:', err);
-        }
+        (err) => console.warn('Tasks onSnapshot note:', err)
       );
 
-      // 2. Real-time Users sync from Cloud Firestore
+      // 2. Users initial fetch & real-time sync
+      getDocs(collection(db, 'users')).then((snapshot) => {
+        if (!snapshot.empty) {
+          const remoteMap = new Map<string, User>();
+          snapshot.forEach((docSnap) => {
+            const uData = docSnap.data() as User;
+            remoteMap.set(docSnap.id, { ...uData, id: docSnap.id });
+          });
+
+          // Ensure SEED_USERS exist and roles are exact
+          SEED_USERS.forEach((su) => {
+            const existing = remoteMap.get(su.id);
+            if (!existing) {
+              remoteMap.set(su.id, su);
+              if (db) setDoc(doc(db, 'users', su.id), sanitizeForFirestore(su)).catch(() => {});
+            }
+          });
+
+          this.users = Array.from(remoteMap.values());
+          this.notify();
+        }
+      }).catch(() => {});
+
       onSnapshot(
         collection(db, 'users'),
         (snapshot) => {
@@ -235,19 +262,10 @@ class MemoryStore {
               remoteMap.set(docSnap.id, { ...uData, id: docSnap.id });
             });
 
-            // Ensure SEED_USERS defaults exist in the map
             SEED_USERS.forEach((su) => {
               if (!remoteMap.has(su.id)) {
-                // Check if matched by email
-                const existingByEmail = Array.from(remoteMap.values()).find(
-                  (ru) => ru.email.toLowerCase() === su.email.toLowerCase()
-                );
-                if (!existingByEmail) {
-                  remoteMap.set(su.id, su);
-                  if (db) {
-                    setDoc(doc(db, 'users', su.id), sanitizeForFirestore(su)).catch(() => {});
-                  }
-                }
+                remoteMap.set(su.id, su);
+                if (db) setDoc(doc(db, 'users', su.id), sanitizeForFirestore(su)).catch(() => {});
               }
             });
 
@@ -255,12 +273,22 @@ class MemoryStore {
             this.notify();
           }
         },
-        (err) => {
-          console.warn('Firestore users onSnapshot warning:', err);
-        }
+        (err) => console.warn('Users onSnapshot note:', err)
       );
 
-      // 3. Real-time Activities sync from Cloud Firestore
+      // 3. Activities initial fetch & real-time sync
+      getDocs(collection(db, 'activities')).then((snapshot) => {
+        if (!snapshot.empty) {
+          const remoteActivities: TaskActivity[] = [];
+          snapshot.forEach((docSnap) => {
+            remoteActivities.push({ ...(docSnap.data() as TaskActivity), id: docSnap.id });
+          });
+          remoteActivities.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          this.activities = remoteActivities;
+          this.persist();
+        }
+      }).catch(() => {});
+
       onSnapshot(
         collection(db, 'activities'),
         (snapshot) => {
@@ -277,7 +305,36 @@ class MemoryStore {
         () => {}
       );
 
-      // 4. Real-time Audit logs sync from Cloud Firestore
+      // 4. Notifications initial fetch & real-time sync
+      getDocs(collection(db, 'notifications')).then((snapshot) => {
+        if (!snapshot.empty) {
+          const remoteNotifs: Notification[] = [];
+          snapshot.forEach((docSnap) => {
+            remoteNotifs.push({ ...(docSnap.data() as Notification), id: docSnap.id });
+          });
+          remoteNotifs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          this.notifications = remoteNotifs;
+          this.persist();
+        }
+      }).catch(() => {});
+
+      onSnapshot(
+        collection(db, 'notifications'),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const remoteNotifs: Notification[] = [];
+            snapshot.forEach((docSnap) => {
+              remoteNotifs.push({ ...(docSnap.data() as Notification), id: docSnap.id });
+            });
+            remoteNotifs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.notifications = remoteNotifs;
+            this.persist();
+          }
+        },
+        () => {}
+      );
+
+      // 5. Audit logs real-time sync
       onSnapshot(
         collection(db, 'audit_logs'),
         (snapshot) => {
@@ -456,7 +513,8 @@ class MemoryStore {
 
     this.tasks.unshift(newTask);
 
-    // Add assignees
+    // Add assignees and notifications
+    const newNotifs: Notification[] = [];
     assigneeUserIds.forEach((uid) => {
       this.assignees.push({
         id: `asgn_${taskId}_${uid}`,
@@ -466,7 +524,7 @@ class MemoryStore {
       });
 
       // Add notification for faculty
-      this.notifications.unshift({
+      const notifItem: Notification = {
         id: `notif_${Date.now()}_${uid}`,
         userId: uid,
         taskId,
@@ -475,7 +533,9 @@ class MemoryStore {
         message: `${creator.name} assigned you a ${data.priority} priority task due ${new Date(data.dueDate).toLocaleDateString()}.`,
         read: false,
         createdAt: now,
-      });
+      };
+      this.notifications.unshift(notifItem);
+      newNotifs.push(notifItem);
     });
 
     // Add Activity
@@ -484,7 +544,7 @@ class MemoryStore {
       .map((u) => u.name)
       .join(', ');
 
-    this.activities.unshift({
+    const newActivity: TaskActivity = {
       id: 'act_' + Date.now(),
       taskId,
       userId: creator.id,
@@ -493,10 +553,11 @@ class MemoryStore {
       action: 'TASK_CREATED',
       description: `Task created and assigned to ${assigneeNames}`,
       createdAt: now,
-    });
+    };
+    this.activities.unshift(newActivity);
 
     // Log Audit
-    this.auditLogs.unshift({
+    const newAuditLog: AuditLog = {
       id: 'audit_' + Date.now(),
       userId: creator.id,
       userName: creator.name,
@@ -505,14 +566,19 @@ class MemoryStore {
       entityId: taskId,
       details: { title: data.title, priority: data.priority, assignees: assigneeUserIds },
       createdAt: now,
-    });
+    };
+    this.auditLogs.unshift(newAuditLog);
 
     this.persist();
 
-    // Sync new task to Firestore
+    // Sync all new records directly to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore(newTask)).catch((e) => {
-        console.warn('Firestore createTask error:', e);
+      const firestoreDb = db;
+      setDoc(doc(firestoreDb, 'tasks', taskId), sanitizeForFirestore(newTask)).catch(() => {});
+      setDoc(doc(firestoreDb, 'activities', newActivity.id), sanitizeForFirestore(newActivity)).catch(() => {});
+      setDoc(doc(firestoreDb, 'audit_logs', newAuditLog.id), sanitizeForFirestore(newAuditLog)).catch(() => {});
+      newNotifs.forEach((n) => {
+        setDoc(doc(firestoreDb, 'notifications', n.id), sanitizeForFirestore(n)).catch(() => {});
       });
     }
 
@@ -534,6 +600,8 @@ class MemoryStore {
       updatedAt: now,
     };
 
+    const newNotifs: Notification[] = [];
+
     if (status === 'IN_PROGRESS') {
       action = 'TASK_STARTED';
       activityDesc = `${actor.name} started working on this task`;
@@ -546,7 +614,7 @@ class MemoryStore {
       // Notify HOD
       const hod = this.users.find((u) => u.role === 'ADMIN');
       if (hod) {
-        this.notifications.unshift({
+        const notif: Notification = {
           id: `notif_${Date.now()}_${hod.id}`,
           userId: hod.id,
           taskId,
@@ -555,7 +623,9 @@ class MemoryStore {
           message: `${actor.name} has submitted work for review.`,
           read: false,
           createdAt: now,
-        });
+        };
+        this.notifications.unshift(notif);
+        newNotifs.push(notif);
       }
     } else if (status === 'REVISION_REQUIRED') {
       action = 'REVISION_REQUESTED';
@@ -565,7 +635,7 @@ class MemoryStore {
       // Notify all assignees
       const taskAssigneeRecords = this.assignees.filter((a) => a.taskId === taskId);
       taskAssigneeRecords.forEach((a) => {
-        this.notifications.unshift({
+        const notif: Notification = {
           id: `notif_${Date.now()}_${a.userId}`,
           userId: a.userId,
           taskId,
@@ -574,7 +644,9 @@ class MemoryStore {
           message: `HOD commented: ${updates.revisionComment}`,
           read: false,
           createdAt: now,
-        });
+        };
+        this.notifications.unshift(notif);
+        newNotifs.push(notif);
       });
     } else if (status === 'COMPLETED') {
       action = 'TASK_COMPLETED';
@@ -584,7 +656,7 @@ class MemoryStore {
       // Notify assignees
       const taskAssigneeRecords = this.assignees.filter((a) => a.taskId === taskId);
       taskAssigneeRecords.forEach((a) => {
-        this.notifications.unshift({
+        const notif: Notification = {
           id: `notif_${Date.now()}_${a.userId}`,
           userId: a.userId,
           taskId,
@@ -593,14 +665,16 @@ class MemoryStore {
           message: `Your submitted work was verified and marked as Completed by HOD.`,
           read: false,
           createdAt: now,
-        });
+        };
+        this.notifications.unshift(notif);
+        newNotifs.push(notif);
       });
     }
 
     this.tasks[taskIndex] = { ...task, ...updates };
 
     // Record activity
-    this.activities.unshift({
+    const newActivity: TaskActivity = {
       id: 'act_' + Date.now(),
       taskId,
       userId: actor.id,
@@ -609,10 +683,11 @@ class MemoryStore {
       action,
       description: activityDesc,
       createdAt: now,
-    });
+    };
+    this.activities.unshift(newActivity);
 
     // Record audit log
-    this.auditLogs.unshift({
+    const newAuditLog: AuditLog = {
       id: 'audit_' + Date.now(),
       userId: actor.id,
       userName: actor.name,
@@ -621,14 +696,19 @@ class MemoryStore {
       entityId: taskId,
       details: { title: task.title, status, comment },
       createdAt: now,
-    });
+    };
+    this.auditLogs.unshift(newAuditLog);
 
     this.persist();
 
-    // Sync status to Firestore
+    // Sync status and relations to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch((e) => {
-        console.warn('Firestore updateTaskStatus error:', e);
+      const firestoreDb = db;
+      setDoc(doc(firestoreDb, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch(() => {});
+      setDoc(doc(firestoreDb, 'activities', newActivity.id), sanitizeForFirestore(newActivity)).catch(() => {});
+      setDoc(doc(firestoreDb, 'audit_logs', newAuditLog.id), sanitizeForFirestore(newAuditLog)).catch(() => {});
+      newNotifs.forEach((n) => {
+        setDoc(doc(firestoreDb, 'notifications', n.id), sanitizeForFirestore(n)).catch(() => {});
       });
     }
 
@@ -648,8 +728,9 @@ class MemoryStore {
       updatedAt: now,
     };
 
+    let newAuditLog: AuditLog | null = null;
     if (actor) {
-      this.auditLogs.unshift({
+      newAuditLog = {
         id: 'audit_' + Date.now(),
         userId: actor.id,
         userName: actor.name,
@@ -658,16 +739,18 @@ class MemoryStore {
         entityId: taskId,
         details: { updates },
         createdAt: now,
-      });
+      };
+      this.auditLogs.unshift(newAuditLog);
     }
 
     this.persist();
 
     // Sync update to Firestore
     if (isFirebaseConfigured && db) {
-      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch((e) => {
-        console.warn('Firestore updateTask error:', e);
-      });
+      setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch(() => {});
+      if (newAuditLog) {
+        setDoc(doc(db, 'audit_logs', newAuditLog.id), sanitizeForFirestore(newAuditLog)).catch(() => {});
+      }
     }
 
     return this.getTask(taskId)!;
@@ -682,7 +765,7 @@ class MemoryStore {
     this.activities = this.activities.filter((a) => a.taskId !== taskId);
 
     // Audit log
-    this.auditLogs.unshift({
+    const newAuditLog: AuditLog = {
       id: 'audit_' + Date.now(),
       userId: actor.id,
       userName: actor.name,
@@ -691,15 +774,15 @@ class MemoryStore {
       entityId: taskId,
       details: { title: task.title, deletedBy: actor.name },
       createdAt: new Date().toISOString(),
-    });
+    };
+    this.auditLogs.unshift(newAuditLog);
 
     this.persist();
 
     // Delete from Firestore
     if (isFirebaseConfigured && db) {
-      deleteDoc(doc(db, 'tasks', taskId)).catch((e) => {
-        console.warn('Firestore deleteTask error:', e);
-      });
+      deleteDoc(doc(db, 'tasks', taskId)).catch(() => {});
+      setDoc(doc(db, 'audit_logs', newAuditLog.id), sanitizeForFirestore(newAuditLog)).catch(() => {});
     }
 
     return true;
@@ -718,12 +801,20 @@ class MemoryStore {
     if (notif) {
       notif.read = true;
       this.persist();
+      if (isFirebaseConfigured && db) {
+        setDoc(doc(db, 'notifications', notificationId), sanitizeForFirestore({ read: true }), { merge: true }).catch(() => {});
+      }
     }
   }
 
   markAllNotificationsRead(userId: string): void {
     this.notifications.forEach((n) => {
-      if (n.userId === userId) n.read = true;
+      if (n.userId === userId) {
+        n.read = true;
+        if (isFirebaseConfigured && db) {
+          setDoc(doc(db, 'notifications', n.id), sanitizeForFirestore({ read: true }), { merge: true }).catch(() => {});
+        }
+      }
     });
     this.persist();
   }

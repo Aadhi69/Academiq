@@ -93,11 +93,16 @@ export default function AdminDashboardPage() {
       {/* 1. Overview Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">
-            Overview
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Department of Electrical and Electronics Engineering &bull; Work Management Center
+          <div className="flex items-center gap-2.5 flex-wrap mb-1">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              Department Overview
+            </h1>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+              HOD Portal &bull; hodeee@klu.ac.in
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Dr. K. Vijayakumar &bull; Associate Professor &amp; Head &bull; Department of Electrical and Electronics Engineering
           </p>
         </div>
 
