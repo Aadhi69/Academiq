@@ -93,8 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      // Step 2 & 3: Look up user in Firestore
-      const matched = await getUserByEmail(email);
+      // Look up user in Firestore / memoryStore
+      let matched = await getUserByEmail(email);
+
+      // Explicit roster fallbacks for HOD and Faculty Dr. Vijayakumar
+      if (!matched && email === 'hodeee@klu.ac.in') {
+        matched = memoryStore.getUser('user_hodeee') || null;
+      }
+      if (!matched && email === 'k.vijayakumar@klu.ac.in') {
+        matched = memoryStore.getUser('user_klu1043') || null;
+      }
 
       if (matched && matched.isActive) {
         setUser(matched);
@@ -103,7 +111,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         return { success: true, role: matched.role };
       } else {
-        // Step 7: Deny access with exact message & sign out
         await firebaseSignOut(auth);
         if (typeof window !== 'undefined') {
           localStorage.removeItem('academiq_auth_user_id');
@@ -111,12 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         return { 
           success: false, 
-          error: 'Your account is not registered with Academiq. Please contact the HOD.' 
+          error: `Account (${email}) is not registered in the EEE faculty roster. Please contact the HOD (hodeee@klu.ac.in).` 
         };
       }
     } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user') {
-        return { success: false, error: 'Sign-in cancelled by user.' };
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return { success: false, error: 'Google sign-in popup was closed.' };
+      }
+      if (err?.code === 'auth/popup-blocked') {
+        return { success: false, error: 'Sign-in popup was blocked by your mobile browser. Please allow popups or use Email/Password sign-in below.' };
       }
       return { success: false, error: err?.message || 'Google sign-in failed.' };
     }
@@ -133,25 +143,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithEmail = async (
-    email: string,
+    emailOrKluid: string,
     password?: string
   ): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
-    const normalized = email.trim().toLowerCase();
+    const normalized = (emailOrKluid || '').trim().toLowerCase();
     const found = (await getUserByEmail(normalized)) || memoryStore.getUser(normalized);
 
     if (!found || !found.isActive) {
       return {
         success: false,
-        error: 'Your account is not registered with Academiq. Please contact the HOD.',
+        error: 'Your account is not registered with Academiq. Please check your email/KLU ID or contact the HOD (hodeee@klu.ac.in).',
       };
     }
 
-    // Verify password (default EEE@Kare if not changed)
+    // Verify password (check custom password or initial default EEE@Kare)
     const expectedPassword = found.password || 'EEE@Kare';
-    if (password && password !== expectedPassword && password !== 'EEE@Kare') {
+    const enteredPassword = (password || '').trim();
+
+    if (enteredPassword !== expectedPassword && enteredPassword !== 'EEE@Kare') {
       return {
         success: false,
-        error: 'Invalid password. Default initial password is EEE@Kare.',
+        error: 'Invalid password. If you recently updated your password, please use your new password. Default is EEE@Kare.',
       };
     }
 

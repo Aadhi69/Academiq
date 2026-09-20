@@ -229,14 +229,30 @@ class MemoryStore {
         collection(db, 'users'),
         (snapshot) => {
           if (!snapshot.empty) {
-            const remoteUsers: User[] = [];
+            const remoteMap = new Map<string, User>();
             snapshot.forEach((docSnap) => {
-              remoteUsers.push({ ...(docSnap.data() as User), id: docSnap.id });
+              const uData = docSnap.data() as User;
+              remoteMap.set(docSnap.id, { ...uData, id: docSnap.id });
             });
-            if (remoteUsers.length > 0) {
-              this.users = remoteUsers;
-              this.notify();
-            }
+
+            // Ensure SEED_USERS defaults exist in the map
+            SEED_USERS.forEach((su) => {
+              if (!remoteMap.has(su.id)) {
+                // Check if matched by email
+                const existingByEmail = Array.from(remoteMap.values()).find(
+                  (ru) => ru.email.toLowerCase() === su.email.toLowerCase()
+                );
+                if (!existingByEmail) {
+                  remoteMap.set(su.id, su);
+                  if (db) {
+                    setDoc(doc(db, 'users', su.id), sanitizeForFirestore(su)).catch(() => {});
+                  }
+                }
+              }
+            });
+
+            this.users = Array.from(remoteMap.values());
+            this.notify();
           }
         },
         (err) => {
@@ -851,47 +867,81 @@ export function getFacultyWorkload(faculty: User, tasks: Task[]): FacultyWorkloa
 }
 
 /**
- * Looks up user in Firestore by email or local seed records.
+ * Looks up user in Firestore or memoryStore by email, KLU ID, or user ID.
  */
-export async function getUserByEmail(email: string): Promise<User | null> {
-  const normalized = email.trim().toLowerCase();
+export async function getUserByEmail(identifier: string): Promise<User | null> {
+  const normalized = (identifier || '').trim().toLowerCase();
+  if (!normalized) return null;
 
+  // 1. Check in-memory store
+  const localMatch = memoryStore.getUsers().find((u) => 
+    u.email.toLowerCase() === normalized ||
+    u.kluid.toLowerCase() === normalized ||
+    u.id.toLowerCase() === normalized ||
+    (u.eduid && u.eduid.toLowerCase() === normalized)
+  );
+
+  // 2. Query Firestore if configured
   if (isFirebaseConfigured && db) {
     try {
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', normalized));
-      const snap = await getDocs(q);
+      // Search by email
+      const qEmail = query(usersRef, where('email', '==', normalized));
+      const snapEmail = await getDocs(qEmail);
 
-      if (!snap.empty) {
-        const docData = snap.docs[0].data() as User;
-        return { ...docData, id: snap.docs[0].id };
+      if (!snapEmail.empty) {
+        const docData = snapEmail.docs[0].data() as User;
+        return { ...docData, id: snapEmail.docs[0].id };
+      }
+
+      // Search by kluid
+      const qKlu = query(usersRef, where('kluid', '==', normalized));
+      const snapKlu = await getDocs(qKlu);
+      if (!snapKlu.empty) {
+        const docData = snapKlu.docs[0].data() as User;
+        return { ...docData, id: snapKlu.docs[0].id };
+      }
+
+      // Check direct document ID
+      const directSnap = await getDoc(doc(db, 'users', normalized));
+      if (directSnap.exists()) {
+        const docData = directSnap.data() as User;
+        return { ...docData, id: directSnap.id };
       }
     } catch (err) {
       console.warn('Firestore getUserByEmail error:', err);
     }
   }
 
-  // Check in-memory/seeded users
-  const localMatch = memoryStore.getUsers().find((u) => u.email.toLowerCase() === normalized);
   return localMatch || null;
 }
 
 /**
- * Seeds initial official EEE faculty roster into Firestore if empty
+ * Seeds / Syncs official EEE faculty roster into Firestore ensuring all members exist
  */
 export async function seedInitialUsersToFirestore(): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
 
   try {
-    const usersRef = collection(db, 'users');
-    const snap = await getDocs(usersRef);
-
-    if (snap.empty) {
-      for (const user of SEED_USERS) {
-        await setDoc(doc(db, 'users', user.id), user);
+    for (const user of SEED_USERS) {
+      const userDocRef = doc(db, 'users', user.id);
+      const userDocSnap = await getDoc(userDocRef);
+      if (!userDocSnap.exists()) {
+        await setDoc(userDocRef, sanitizeForFirestore(user));
+      } else {
+        const existingData = userDocSnap.data() as User;
+        await setDoc(
+          userDocRef,
+          sanitizeForFirestore({
+            ...user,
+            password: existingData.password || user.password,
+            updatedAt: new Date().toISOString(),
+          }),
+          { merge: true }
+        );
       }
-      console.log('Seeded official EEE faculty roster to Firestore successfully.');
     }
+    console.log('Official EEE faculty roster verified & synced to Firestore.');
   } catch (err) {
     console.warn('Note on Firestore user seeding:', err);
   }

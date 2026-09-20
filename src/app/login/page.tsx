@@ -145,7 +145,7 @@ export default function LoginPage() {
             <button
               onClick={() => {
                 setRoleTab('ADMIN');
-                if (hodUser) setEmailInput(hodUser.email);
+                setEmailInput('hodeee@klu.ac.in');
               }}
               className={`w-1/2 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                 roleTab === 'ADMIN'
@@ -159,7 +159,7 @@ export default function LoginPage() {
             <button
               onClick={() => {
                 setRoleTab('FACULTY');
-                if (facultyUsers.length > 0) setEmailInput(facultyUsers[0].email);
+                setEmailInput('k.vijayakumar@klu.ac.in');
               }}
               className={`w-1/2 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                 roleTab === 'FACULTY'

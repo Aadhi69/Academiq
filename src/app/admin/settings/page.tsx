@@ -292,11 +292,11 @@ export default function AdminSettingsPage() {
           <div className="space-y-4">
             <div>
               <span className="text-slate-400 block text-[11px] uppercase tracking-wider font-semibold">Head of Department (HOD)</span>
-              <span className="font-semibold text-slate-900 text-sm mt-0.5 block">Dr. K. Vijayakumar (HOD / EEE)</span>
+              <span className="font-semibold text-slate-900 text-sm mt-0.5 block">Dr. K. Vijayakumar (hodeee@klu.ac.in)</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[11px] uppercase tracking-wider font-semibold">Official Faculty Roster</span>
-              <span className="font-semibold text-slate-900 text-sm mt-0.5 block">8 Appointed Faculty Members</span>
+              <span className="text-slate-400 block text-[11px] uppercase tracking-wider font-semibold">Official Department Roster</span>
+              <span className="font-semibold text-slate-900 text-sm mt-0.5 block">1 Head of Department + 8 Appointed Faculty Members</span>
             </div>
           </div>
         </div>

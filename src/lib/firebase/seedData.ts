@@ -2,6 +2,22 @@ import { User, Department, Task, TaskAssignee, TaskActivity, Notification, Audit
 
 export const SEED_USERS: User[] = [
   {
+    id: 'user_hodeee',
+    name: 'Dr. K. Vijayakumar (HOD)',
+    email: 'hodeee@klu.ac.in',
+    password: 'EEE@Kare',
+    mobile: '9600893226',
+    kluid: 'hodeee',
+    eduid: 'KVKHOD',
+    designation: 'Associate Professor & Head',
+    role: 'ADMIN',
+    departmentId: 'dept_eee',
+    avatarUrl: '',
+    isActive: true,
+    createdAt: '2026-08-01T09:00:00.000Z',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  },
+  {
     id: 'user_klu1043',
     name: 'Dr. K. Vijayakumar',
     email: 'k.vijayakumar@klu.ac.in',
@@ -9,8 +25,8 @@ export const SEED_USERS: User[] = [
     mobile: '9600893226',
     kluid: 'klu1043',
     eduid: 'KVKEEE',
-    designation: 'Associate Professor & Head',
-    role: 'ADMIN',
+    designation: 'Associate Professor',
+    role: 'FACULTY',
     departmentId: 'dept_eee',
     avatarUrl: '',
     isActive: true,

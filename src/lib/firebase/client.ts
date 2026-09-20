@@ -33,7 +33,6 @@ if (isFirebaseConfigured) {
     
     googleProvider = new GoogleAuthProvider();
     googleProvider.setCustomParameters({
-      hd: 'klu.ac.in',
       prompt: 'select_account',
     });
 
