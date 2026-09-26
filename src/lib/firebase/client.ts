@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInAnonymously, onAuthStateChanged, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics';
 
@@ -36,6 +36,17 @@ if (isFirebaseConfigured) {
       prompt: 'select_account',
     });
 
+    // Automatically authenticate anonymously in background to ensure valid request.auth for Firestore rules
+    if (typeof window !== 'undefined' && auth) {
+      onAuthStateChanged(auth, (user) => {
+        if (!user && auth) {
+          signInAnonymously(auth).catch((e) => {
+            console.warn('Anonymous auth initialization note:', e?.message);
+          });
+        }
+      });
+    }
+
     if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
       isSupported().then((supported) => {
         if (supported && app) {
@@ -48,4 +59,14 @@ if (isFirebaseConfigured) {
   }
 }
 
+export async function ensureFirebaseAuth(): Promise<void> {
+  if (typeof window === 'undefined' || !auth) return;
+  if (!auth.currentUser) {
+    try {
+      await signInAnonymously(auth);
+    } catch {}
+  }
+}
+
 export { app, auth, db, googleProvider, analytics };
+

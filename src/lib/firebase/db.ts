@@ -145,12 +145,108 @@ class MemoryStore {
     }
   }
 
+  public async pullCloudSync() {
+    if (typeof window === 'undefined') return;
+    try {
+      const res = await fetch('/api/sync', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success && json.data) {
+          const remoteData = json.data;
+
+          if (Array.isArray(remoteData.tasks) && remoteData.tasks.length > 0) {
+            const taskMap = new Map<string, Task>();
+            // Keep existing
+            this.tasks.forEach((t) => taskMap.set(t.id, t));
+            // Merge remote
+            remoteData.tasks.forEach((t: Task) => {
+              if (t && t.id) taskMap.set(t.id, t);
+            });
+            const merged = Array.from(taskMap.values());
+            merged.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.tasks = merged;
+
+            // Rebuild assignees
+            const newAssignees: TaskAssignee[] = [];
+            merged.forEach((t) => {
+              t.assigneeIds?.forEach((uid) => {
+                newAssignees.push({
+                  id: `asgn_${t.id}_${uid}`,
+                  taskId: t.id,
+                  userId: uid,
+                  createdAt: t.createdAt || new Date().toISOString(),
+                });
+              });
+            });
+            this.assignees = newAssignees;
+          }
+
+          if (Array.isArray(remoteData.users) && remoteData.users.length > 0) {
+            const userMap = new Map<string, User>();
+            SEED_USERS.forEach((su) => userMap.set(su.id, su));
+            remoteData.users.forEach((ru: User) => {
+              if (ru && ru.id) {
+                const existing = userMap.get(ru.id);
+                if (existing) {
+                  userMap.set(ru.id, { ...existing, password: ru.password || existing.password, mobile: ru.mobile || existing.mobile });
+                } else {
+                  userMap.set(ru.id, ru);
+                }
+              }
+            });
+            this.users = Array.from(userMap.values());
+          }
+
+          if (Array.isArray(remoteData.activities) && remoteData.activities.length > 0) {
+            const actMap = new Map<string, TaskActivity>();
+            this.activities.forEach((a) => actMap.set(a.id, a));
+            remoteData.activities.forEach((a: TaskActivity) => {
+              if (a && a.id) actMap.set(a.id, a);
+            });
+            const mergedAct = Array.from(actMap.values());
+            mergedAct.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.activities = mergedAct;
+          }
+
+          if (Array.isArray(remoteData.notifications) && remoteData.notifications.length > 0) {
+            const notifMap = new Map<string, Notification>();
+            this.notifications.forEach((n) => notifMap.set(n.id, n));
+            remoteData.notifications.forEach((n: Notification) => {
+              if (n && n.id) notifMap.set(n.id, n);
+            });
+            const mergedNotifs = Array.from(notifMap.values());
+            mergedNotifs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+            this.notifications = mergedNotifs;
+          }
+
+          this.persist();
+        }
+      }
+    } catch (e) {
+      // Non-blocking sync attempt
+    }
+  }
+
   public initFirestoreListeners() {
-    if (typeof window === 'undefined' || !isFirebaseConfigured || !db || this.isFirestoreInitialized) return;
+    if (typeof window === 'undefined' || this.isFirestoreInitialized) return;
     this.isFirestoreInitialized = true;
 
+    // 1. Immediate Cloud Sync pull from /api/sync
+    this.pullCloudSync();
+
+    // 2. Set periodic background cloud sync polling & visibility hooks
+    if (typeof window !== 'undefined') {
+      setInterval(() => this.pullCloudSync(), 6000);
+      window.addEventListener('focus', () => this.pullCloudSync());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.pullCloudSync();
+      });
+    }
+
+    if (!isFirebaseConfigured || !db) return;
+
     try {
-      // 1. Tasks initial fetch & real-time sync
+      // Tasks initial fetch & real-time sync
       getDocs(collection(db, 'tasks')).then((snapshot) => {
         const remoteMap = new Map<string, Task>();
         if (!snapshot.empty) {
@@ -229,7 +325,7 @@ class MemoryStore {
         (err) => console.warn('Tasks onSnapshot note:', err)
       );
 
-      // 2. Users initial fetch & real-time sync
+      // Users initial fetch & real-time sync
       getDocs(collection(db, 'users')).then((snapshot) => {
         if (!snapshot.empty) {
           const remoteMap = new Map<string, User>();
@@ -238,7 +334,6 @@ class MemoryStore {
             remoteMap.set(docSnap.id, { ...uData, id: docSnap.id });
           });
 
-          // Ensure SEED_USERS exist and roles are exact
           SEED_USERS.forEach((su) => {
             const existing = remoteMap.get(su.id);
             if (!existing) {
@@ -276,7 +371,7 @@ class MemoryStore {
         (err) => console.warn('Users onSnapshot note:', err)
       );
 
-      // 3. Activities initial fetch & real-time sync
+      // Activities initial fetch & real-time sync
       getDocs(collection(db, 'activities')).then((snapshot) => {
         if (!snapshot.empty) {
           const remoteActivities: TaskActivity[] = [];
@@ -305,7 +400,7 @@ class MemoryStore {
         () => {}
       );
 
-      // 4. Notifications initial fetch & real-time sync
+      // Notifications initial fetch & real-time sync
       getDocs(collection(db, 'notifications')).then((snapshot) => {
         if (!snapshot.empty) {
           const remoteNotifs: Notification[] = [];
@@ -334,7 +429,7 @@ class MemoryStore {
         () => {}
       );
 
-      // 5. Audit logs real-time sync
+      // Audit logs real-time sync
       onSnapshot(
         collection(db, 'audit_logs'),
         (snapshot) => {
@@ -367,6 +462,11 @@ class MemoryStore {
 
     if (typeof window !== 'undefined') {
       localStorage.setItem('academiq_users_custom_pwd', JSON.stringify(this.users));
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'UPDATE_PASSWORD', userId, newPassword }),
+      }).catch(() => {});
     }
 
     if (isFirebaseConfigured && db) {
@@ -571,7 +671,20 @@ class MemoryStore {
 
     this.persist();
 
-    // Sync all new records directly to Firestore
+    // 1. Sync to Next.js universal /api/sync relay
+    if (typeof window !== 'undefined') {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'CREATE_TASK',
+          task: newTask,
+          actor: creator,
+        }),
+      }).catch(() => {});
+    }
+
+    // 2. Sync all new records directly to Firestore
     if (isFirebaseConfigured && db) {
       const firestoreDb = db;
       setDoc(doc(firestoreDb, 'tasks', taskId), sanitizeForFirestore(newTask)).catch(() => {});
@@ -701,7 +814,22 @@ class MemoryStore {
 
     this.persist();
 
-    // Sync status and relations to Firestore
+    // 1. Sync status to Next.js universal /api/sync relay
+    if (typeof window !== 'undefined') {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'UPDATE_TASK_STATUS',
+          taskId,
+          status,
+          actor,
+          comment,
+        }),
+      }).catch(() => {});
+    }
+
+    // 2. Sync status and relations to Firestore
     if (isFirebaseConfigured && db) {
       const firestoreDb = db;
       setDoc(doc(firestoreDb, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch(() => {});
@@ -745,7 +873,21 @@ class MemoryStore {
 
     this.persist();
 
-    // Sync update to Firestore
+    // 1. Sync to /api/sync
+    if (typeof window !== 'undefined') {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'UPDATE_TASK',
+          taskId,
+          updates,
+          actor,
+        }),
+      }).catch(() => {});
+    }
+
+    // 2. Sync update to Firestore
     if (isFirebaseConfigured && db) {
       setDoc(doc(db, 'tasks', taskId), sanitizeForFirestore({ ...task, ...updates }), { merge: true }).catch(() => {});
       if (newAuditLog) {
@@ -779,7 +921,20 @@ class MemoryStore {
 
     this.persist();
 
-    // Delete from Firestore
+    // 1. Sync delete to /api/sync
+    if (typeof window !== 'undefined') {
+      fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'DELETE_TASK',
+          taskId,
+          actor,
+        }),
+      }).catch(() => {});
+    }
+
+    // 2. Delete from Firestore
     if (isFirebaseConfigured && db) {
       deleteDoc(doc(db, 'tasks', taskId)).catch(() => {});
       setDoc(doc(db, 'audit_logs', newAuditLog.id), sanitizeForFirestore(newAuditLog)).catch(() => {});
@@ -853,28 +1008,68 @@ class MemoryStore {
 
 export const memoryStore = new MemoryStore();
 
-// Task assignment helper across ID, email, or kluid (case-insensitive and robust)
+// Task assignment helper across ID, email, or kluid (case-insensitive and ultra-robust)
 export function isTaskAssignedToUser(task: Task, user: User | null | undefined): boolean {
   if (!task || !user) return false;
   const cleanUserId = (user.id || '').trim().toLowerCase();
   const cleanEmail = (user.email || '').trim().toLowerCase();
   const cleanKluId = (user.kluid || '').trim().toLowerCase();
+  const cleanEduId = (user.eduid || '').trim().toLowerCase();
+  const cleanName = (user.name || '').trim().toLowerCase();
 
   const ids = task.assigneeIds || [];
+
+  // 1. Direct ID / Email / KLU ID / staff number / alias matching
   const matchesDirectId = ids.some((id) => {
     const clean = (id || '').trim().toLowerCase();
-    return clean === cleanUserId || clean === cleanEmail || clean === cleanKluId;
+    if (
+      clean === cleanUserId ||
+      clean === cleanEmail ||
+      clean === cleanKluId ||
+      clean === cleanEduId ||
+      (clean.startsWith('klu') && clean.replace(/^klu/, '') === cleanKluId.replace(/^klu/, '')) ||
+      (!clean.startsWith('klu') && `klu${clean}` === cleanKluId)
+    ) {
+      return true;
+    }
+
+    // Resolve assignee ID to user object and match against user
+    const resolvedAssignee = memoryStore.getUser(clean);
+    if (resolvedAssignee) {
+      const rId = resolvedAssignee.id.toLowerCase();
+      const rEmail = resolvedAssignee.email.toLowerCase();
+      const rKlu = resolvedAssignee.kluid.toLowerCase();
+      if (
+        rId === cleanUserId ||
+        rEmail === cleanEmail ||
+        rKlu === cleanKluId ||
+        rKlu.replace(/^klu/, '') === cleanKluId.replace(/^klu/, '')
+      ) {
+        return true;
+      }
+    }
+    return false;
   });
 
   if (matchesDirectId) return true;
 
-  // Also check populated assignees list if available
+  // 2. Check populated assignees list if available
   if (task.assignees && Array.isArray(task.assignees)) {
     return task.assignees.some((a) => {
       const aId = (a.id || '').trim().toLowerCase();
       const aEmail = (a.email || '').trim().toLowerCase();
       const aKlu = (a.kluid || '').trim().toLowerCase();
-      return aId === cleanUserId || aEmail === cleanEmail || aKlu === cleanKluId;
+      const aEdu = (a.eduid || '').trim().toLowerCase();
+      const aName = (a.name || '').trim().toLowerCase();
+      return (
+        aId === cleanUserId ||
+        aEmail === cleanEmail ||
+        aKlu === cleanKluId ||
+        aEdu === cleanEduId ||
+        (aName && cleanName && aName === cleanName) ||
+        (aKlu.startsWith('klu') && aKlu.replace(/^klu/, '') === cleanKluId.replace(/^klu/, '')) ||
+        (!aKlu.startsWith('klu') && `klu${aKlu}` === cleanKluId)
+      );
     });
   }
 
